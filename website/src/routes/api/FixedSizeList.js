@@ -68,12 +68,45 @@ const PROPS = [
         </ul>
         <p>
           Note that lists may scroll in both directions (depending on CSS) but
-          content will only be windowed in the primary direction.
+          content will only be windowed in the primary direction. However, you
+          can use the reverse prop to window the content in reversed direction.
         </p>
       </Fragment>
     ),
     name: 'direction',
     type: 'string',
+  },
+  {
+    defaultValue: false,
+    description: (
+      <Fragment>
+        <p>
+          Reverse the scroll direction of the list and its content.
+          (Items are rendered in reverse) Can be either true or false:
+        </p>
+        <ul>
+          <li>false (default) - normal scrolling
+            <ul>
+              <li><code>direction === "vertical" &nbsp;</code> => top to bottom</li>
+              <li><code>direction === "horizontal"</code> => left to right</li>
+            </ul>
+          </li>
+          <br />
+          <li>true - reversed scrolling
+            <ul>
+              <li><code>direction === "vertical" &nbsp;</code> => bottom to top</li>
+              <li><code>direction === "horizontal"</code> => right to left</li>
+            </ul>
+          </li>
+        </ul>
+        <p>
+          Note that this property uses CSS transformations to achieve its task, thus,
+          you shouldn't override CSS <code>transform</code> property of the list or the item.
+        </p>
+      </Fragment>
+    ),
+    name: 'reversed',
+    type: 'boolean',
   },
   {
     description: (

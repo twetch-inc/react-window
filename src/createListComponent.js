@@ -38,6 +38,7 @@ export type Props<T> = {|
   children: RenderComponent<T>,
   className?: string,
   direction: Direction,
+  reversed: boolean,
   height: number | string,
   initialScrollOffset?: number,
   innerRef?: any,
@@ -97,6 +98,9 @@ type ValidateProps = (props: Props<any>) => void;
 
 const IS_SCROLLING_DEBOUNCE_INTERVAL = 150;
 
+const REVERSE_HORIZONTAL_MATRIX = 'matrix(-1, 0, 0, 1, 0, 0)';
+const REVERSE_VERTICAL_MATRIX = 'matrix(1, 0, 0, -1, 0, 0)';
+
 const defaultItemKey: ItemKeyGetter = index => index;
 
 export default function createListComponent({
@@ -127,6 +131,7 @@ export default function createListComponent({
 
     static defaultProps = {
       direction: 'vertical',
+      reversed: false,
       innerTagName: 'div',
       itemData: undefined,
       outerTagName: 'div',
@@ -227,6 +232,7 @@ export default function createListComponent({
         children,
         className,
         direction,
+        reversed,
         height,
         innerRef,
         innerTagName,
@@ -282,6 +288,11 @@ export default function createListComponent({
             overflow: 'auto',
             WebkitOverflowScrolling: 'touch',
             willChange: 'transform',
+            transform: reversed
+              ? direction === 'horizontal'
+                ? REVERSE_HORIZONTAL_MATRIX
+                : REVERSE_VERTICAL_MATRIX
+              : '',
             ...style,
           },
         },
@@ -375,7 +386,7 @@ export default function createListComponent({
     // So that List can clear cached styles and force item re-render if necessary.
     _getItemStyle: (index: number) => Object;
     _getItemStyle = (index: number): Object => {
-      const { direction, itemSize } = this.props;
+      const { direction, itemSize, reversed } = this.props;
 
       const itemStyleCache = this._getItemStyleCache(
         shouldResetStyleCacheOnItemSizeChange && itemSize
@@ -385,7 +396,7 @@ export default function createListComponent({
       if (itemStyleCache.hasOwnProperty(index)) {
         style = itemStyleCache[index];
       } else {
-        itemStyleCache[index] = style = {
+        style = {
           position: 'absolute',
           left:
             direction === 'horizontal'
@@ -403,7 +414,15 @@ export default function createListComponent({
             direction === 'horizontal'
               ? getItemSize(this.props, index, this._instanceProps)
               : '100%',
+          transform: '',
         };
+        if (reversed) {
+          style.transform =
+            direction === 'horizontal'
+              ? REVERSE_HORIZONTAL_MATRIX // horizontally reverse
+              : REVERSE_VERTICAL_MATRIX; // vertically reverse
+        }
+        itemStyleCache[index] = style;
       }
 
       return style;
@@ -448,13 +467,18 @@ export default function createListComponent({
     }
 
     _onScrollHorizontal = (event: ScrollEvent): void => {
-      const { scrollLeft } = event.currentTarget;
+      let { scrollLeft } = event.currentTarget;
+      const { reversed } = this.props;
       this.setState(prevState => {
         if (prevState.scrollOffset === scrollLeft) {
           // Scroll position may have been updated by cDM/cDU,
           // In which case we don't need to trigger another render,
           // And we don't want to update state.isScrolling.
           return null;
+        }
+        if (reversed) {
+          scrollLeft = 2 * prevState.scrollOffset - scrollLeft;
+          // base + diff = left, base - diff = ? => 2*base = left + ? => ? = 2*base - left
         }
 
         return {
@@ -468,13 +492,19 @@ export default function createListComponent({
     };
 
     _onScrollVertical = (event: ScrollEvent): void => {
-      const { scrollTop } = event.currentTarget;
+      let { scrollTop } = event.currentTarget;
+      const { reversed } = this.props;
       this.setState(prevState => {
         if (prevState.scrollOffset === scrollTop) {
           // Scroll position may have been updated by cDM/cDU,
           // In which case we don't need to trigger another render,
           // And we don't want to update state.isScrolling.
           return null;
+        }
+
+        if (reversed) {
+          scrollTop = 2 * prevState.scrollOffset - scrollTop;
+          // base + diff = top, base - diff = ? => 2*base = top + ? => ? = 2*base - top
         }
 
         return {
