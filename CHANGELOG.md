@@ -1,6 +1,73 @@
 Changelog
 ------------
 
+### 1.8.5
+* ✨ Added UMD (dev and prod) build - ([emmanueltouzery](https://github.com/emmanueltouzery) - [#281](https://github.com/bvaughn/react-window/pull/281))
+
+### 1.8.4
+* 🐛 Fixed size list and grid components now accurately report `visibleStopIndex` in `onItemsRendered`. (Previously this value was incorrectly reported as one index higher.) - ([justingrant](https://github.com/justingrant) - [#274](https://github.com/bvaughn/react-window/pull/274))
+* 🐛 Fixed size list and grid components `scrollToItem` "center" mode when the item being scrolled to is near the viewport edge. - ([justingrant](https://github.com/justingrant) - [#274](https://github.com/bvaughn/react-window/pull/274))
+
+### 1.8.3
+* 🐛 Edge case bug-fix for `scrollToItem` when scrollbars are present ([MarkFalconbridge](https://github.com/MarkFalconbridge) - [#267](https://github.com/bvaughn/react-window/pull/267))
+* 🐛 Fixed RTL scroll offsets for non-Chromium Edge ([MarkFalconbridge](https://github.com/MarkFalconbridge) - [#268](https://github.com/bvaughn/react-window/pull/268))
+* 🐛 Flow types improved ([TrySound](https://github.com/TrySound) - [#260](https://github.com/bvaughn/react-window/pull/260))
+
+
+### 1.8.2
+* ✨ Deprecated grid props `overscanColumnsCount` and `overscanRowsCount` props in favor of more consistently named `overscanColumnCount` and `overscanRowCount`. ([nihgwu](https://github.com/nihgwu) - [#229](https://github.com/bvaughn/react-window/pull/229))
+* 🐛 Fixed shaky elastic scroll problems present in iOS Safari. [#244](https://github.com/bvaughn/react-window/issues/244)
+* 🐛 Fixed RTL edge case bugs and broken scroll-to-item behavior. [#159](https://github.com/bvaughn/react-window/issues/159)
+* 🐛 Fixed broken synchronized scrolling for RTL lists/grids. [#198](https://github.com/bvaughn/react-window/issues/198)
+
+### 1.8.1
+* 🐛 Replaced an incorrect empty-string value for `pointer-events` with `undefined` ([oliviertassinari](https://github.com/oliviertassinari) - [#210](https://github.com/bvaughn/react-window/pull/210))
+
+### 1.8.0
+* 🎉 Added new "smart" align option for grid and list scroll-to-item methods ([gaearon](https://github.com/gaearon) - [#209](https://github.com/bvaughn/react-window/pull/209))
+
+### 1.7.2
+* 🐛 Add guards to avoid invalid scroll offsets when `scrollTo()` is called with a negative offset or when `scrollToItem` is called with invalid indices (negative or too large).
+
+### 1.7.1
+* 🐛 Fix SSR regression introduced in 1.7.0 - ([Betree](https://github.com/Betree) - [#185](https://github.com/bvaughn/react-window/pull/185))
+
+### 1.7.0
+* 🎉 Grid `scrollToItem` supports optional `rowIndex` and `columnIndex` params ([jgoz](https://github.com/jgoz) - [#174](https://github.com/bvaughn/react-window/pull/174))
+* DEV mode checks for `WeakSet` support before using it to avoid requiring a polyfill for IE11 - ([jgoz](https://github.com/jgoz) - [#167](https://github.com/bvaughn/react-window/pull/167))
+
+### 1.6.2
+* 🐛 Bugfix for RTL  when scrolling back towards the beginning (right) of the list.
+
+### 1.6.1
+* 🐛 Bugfix to account for differences between Chrome and non-Chrome browsers with regard to RTL and "scroll" events.
+
+### 1.6.0
+* 🎉 RTL support added for lists and grids. Special thanks to [davidgarsan](https://github.com/davidgarsan) for his support. - [#156](https://github.com/bvaughn/react-window/pull/156)
+* 🐛 Grid `scrollToItem` methods take scrollbar size into account when aligning items - [#153](https://github.com/bvaughn/react-window/issues/153)
+
+### 1.5.2
+* 🐛 Edge case bug fix for `VariableSizeList` and `VariableSizeGrid` when the number of items decreases while a scroll is in progress. - ([iamsolankiamit](https://github.com/iamsolankiamit) - [#138](https://github.com/bvaughn/react-window/pull/138))
+
+### 1.5.1
+* 🐛 Updated `getDerivedState` Flow annotations to address a warning in a newer version of Flow.
+
+### 1.5.0
+* 🎉 Added advanced memoization helpers methods `areEqual` and `shouldComponentUpdate` for item renderers. - [#114](https://github.com/bvaughn/react-window/issues/114)
+
+### 1.4.0
+* 🎉 List and Grid components now "overscan" (pre-render) in both directions when scrolling is not active. When scrolling is in progress, cells are only pre-rendered in the direction being scrolled. This change has been made in an effort to reduce visible flicker when scrolling starts without adding additional overhead during scroll (which is the most performance sensitive time).
+* 🎉 Grid components now support separate `overscanColumnsCount` and `overscanRowsCount` props. Legacy `overscanCount` prop will continue to work, but with a deprecation warning in DEV mode.
+* 🐛 Replaced `setTimeout` with `requestAnimationFrame` based timer, to avoid starvation issue for `isScrolling` reset. - [#106](https://github.com/bvaughn/react-window/issues/106)
+* 🎉 Renamed List and Grid `innerTagName` and `outerTagName` props to `innerElementType` and `outerElementType` to formalize support for attaching arbitrary props (e.g. test ids) to List and Grid inner and outer DOM elements. Legacy `innerTagName` and `outerTagName` props will continue to work, but with a deprecation warning in DEV mode.
+* 🐛 List re-renders items if `direction` prop changes. - [#104](https://github.com/bvaughn/react-window/issues/104)
+
+### 1.3.1
+* 🎉 Pass `itemData` value to custom `itemKey` callbacks when present - [#90](https://github.com/bvaughn/react-window/issues/90))
+
+### 1.3.0
+* (Skipped)
+
 ### 1.2.4
 * 🐛 Added Flow annotations to memoized methods to avoid a Flow warning for newer versions of Flow
 

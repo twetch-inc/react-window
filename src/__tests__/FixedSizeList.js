@@ -1,7 +1,7 @@
-import React, { createRef, PureComponent } from 'react';
+import React, { createRef, forwardRef, PureComponent } from 'react';
 import ReactDOM from 'react-dom';
 import ReactTestRenderer from 'react-test-renderer';
-import ReactTestUtils from 'react-dom/test-utils';
+import { Simulate } from 'react-dom/test-utils';
 import { FixedSizeList } from '..';
 
 const simulateScroll = (instance, scrollOffset, direction = 'vertical') => {
@@ -10,7 +10,7 @@ const simulateScroll = (instance, scrollOffset, direction = 'vertical') => {
   } else {
     instance._outerRef.scrollTop = scrollOffset;
   }
-  ReactTestUtils.Simulate.scroll(instance._outerRef);
+  Simulate.scroll(instance._outerRef);
 };
 
 const findScrollContainer = rendered => rendered.root.children[0].children[0];
@@ -28,6 +28,32 @@ describe('FixedSizeList', () => {
 
   beforeEach(() => {
     jest.useFakeTimers();
+
+    // JSdom does not do actual layout and so doesn't return meaningful values here.
+    // For the purposes of our tests though, we can mock out semi-meaningful values.
+    // This mock is required for e.g. "onScroll" tests to work properly.
+    Object.defineProperties(HTMLElement.prototype, {
+      clientWidth: {
+        configurable: true,
+        get: function() {
+          return parseInt(this.style.width, 10) || 0;
+        },
+      },
+      clientHeight: {
+        configurable: true,
+        get: function() {
+          return parseInt(this.style.height, 10) || 0;
+        },
+      },
+      scrollHeight: {
+        configurable: true,
+        get: () => Number.MAX_SAFE_INTEGER,
+      },
+      scrollWidth: {
+        configurable: true,
+        get: () => Number.MAX_SAFE_INTEGER,
+      },
+    });
 
     onItemsRendered = jest.fn();
 
@@ -52,16 +78,51 @@ describe('FixedSizeList', () => {
 
   it('should render a list of rows', () => {
     ReactTestRenderer.create(<FixedSizeList {...defaultProps} />);
-    expect(itemRenderer).toHaveBeenCalledTimes(7);
+    expect(itemRenderer).toHaveBeenCalledTimes(6);
     expect(onItemsRendered.mock.calls).toMatchSnapshot();
   });
 
   it('should render a list of columns', () => {
     ReactTestRenderer.create(
-      <FixedSizeList {...defaultProps} direction="horizontal" />
+      <FixedSizeList {...defaultProps} layout="horizontal" />
     );
-    expect(itemRenderer).toHaveBeenCalledTimes(5);
+    expect(itemRenderer).toHaveBeenCalledTimes(4);
     expect(onItemsRendered.mock.calls).toMatchSnapshot();
+  });
+
+  it('should re-render items if layout changes', () => {
+    const rendered = ReactTestRenderer.create(
+      <FixedSizeList {...defaultProps} layout="vertical" />
+    );
+    expect(itemRenderer).toHaveBeenCalled();
+    itemRenderer.mockClear();
+
+    // Re-rendering should not affect pure sCU children:
+    rendered.update(<FixedSizeList {...defaultProps} layout="vertical" />);
+    expect(itemRenderer).not.toHaveBeenCalled();
+
+    // Re-rendering with new layout should re-render children:
+    rendered.update(<FixedSizeList {...defaultProps} layout="horizontal" />);
+    expect(itemRenderer).toHaveBeenCalled();
+  });
+
+  // TODO Deprecate direction "horizontal"
+  it('should re-render items if direction changes', () => {
+    spyOn(console, 'warn'); // Ingore legacy prop warning
+
+    const rendered = ReactTestRenderer.create(
+      <FixedSizeList {...defaultProps} direction="vertical" />
+    );
+    expect(itemRenderer).toHaveBeenCalled();
+    itemRenderer.mockClear();
+
+    // Re-rendering should not affect pure sCU children:
+    rendered.update(<FixedSizeList {...defaultProps} direction="vertical" />);
+    expect(itemRenderer).not.toHaveBeenCalled();
+
+    // Re-rendering with new layout should re-render children:
+    rendered.update(<FixedSizeList {...defaultProps} direction="horizontal" />);
+    expect(itemRenderer).toHaveBeenCalled();
   });
 
   describe('scrollbar handling', () => {
@@ -81,7 +142,7 @@ describe('FixedSizeList', () => {
       ReactDOM.render(
         <FixedSizeList
           {...defaultProps}
-          direction="horizontal"
+          layout="horizontal"
           innerRef={innerRef}
         />,
         document.createElement('div')
@@ -165,7 +226,7 @@ describe('FixedSizeList', () => {
       <FixedSizeList {...defaultProps} />
     );
     const scrollContainer = findScrollContainer(rendered);
-    expect(scrollContainer.props.style.pointerEvents).toBe('');
+    expect(scrollContainer.props.style.pointerEvents).toBe(undefined);
     rendered.getInstance().setState({ isScrolling: true });
     expect(scrollContainer.props.style.pointerEvents).toBe('none');
   });
@@ -186,6 +247,39 @@ describe('FixedSizeList', () => {
     });
   });
 
+  describe('direction', () => {
+    it('should set the appropriate CSS direction style', () => {
+      const renderer = ReactTestRenderer.create(
+        <FixedSizeList {...defaultProps} direction="ltr" />
+      );
+      expect(renderer.toJSON().props.style.direction).toBe('ltr');
+      renderer.update(<FixedSizeList {...defaultProps} direction="rtl" />);
+      expect(renderer.toJSON().props.style.direction).toBe('rtl');
+    });
+
+    it('should position items correctly', () => {
+      const renderer = ReactTestRenderer.create(
+        <FixedSizeList {...defaultProps} direction="ltr" />
+      );
+
+      let params = itemRenderer.mock.calls[0][0];
+      expect(params.index).toBe(0);
+      let style = params.style;
+      expect(style.left).toBe(0);
+      expect(style.right).toBeUndefined();
+
+      itemRenderer.mockClear();
+
+      renderer.update(<FixedSizeList {...defaultProps} direction="rtl" />);
+
+      params = itemRenderer.mock.calls[0][0];
+      expect(params.index).toBe(0);
+      style = params.style;
+      expect(style.left).toBeUndefined();
+      expect(style.right).toBe(0);
+    });
+  });
+
   describe('overscanCount', () => {
     it('should require a minimum of 1 overscan to support tabbing', () => {
       ReactTestRenderer.create(
@@ -198,27 +292,36 @@ describe('FixedSizeList', () => {
       expect(onItemsRendered.mock.calls).toMatchSnapshot();
     });
 
-    it('should accommodate a custom overscan', () => {
-      ReactTestRenderer.create(
+    it('should overscan in the direction being scrolled', () => {
+      const instance = ReactDOM.render(
         <FixedSizeList
           {...defaultProps}
           initialScrollOffset={50}
           overscanCount={2}
-        />
+        />,
+        document.createElement('div')
+      );
+      // Simulate scrolling (rather than using scrollTo) to test isScrolling state.
+      simulateScroll(instance, 100);
+      simulateScroll(instance, 50);
+      expect(onItemsRendered.mock.calls).toMatchSnapshot();
+    });
+
+    it('should overscan in both directions when not scrolling', () => {
+      ReactTestRenderer.create(
+        <FixedSizeList {...defaultProps} initialScrollOffset={50} />
       );
       expect(onItemsRendered.mock.calls).toMatchSnapshot();
     });
 
-    it('should overscan in the direction being scrolled', () => {
-      const rendered = ReactTestRenderer.create(
+    it('should accommodate a custom overscan', () => {
+      ReactTestRenderer.create(
         <FixedSizeList
           {...defaultProps}
-          initialScrollOffset={50}
-          overscanCount={2}
+          initialScrollOffset={100}
+          overscanCount={3}
         />
       );
-      rendered.getInstance().scrollTo(100);
-      rendered.getInstance().scrollTo(50);
       expect(onItemsRendered.mock.calls).toMatchSnapshot();
     });
 
@@ -265,7 +368,7 @@ describe('FixedSizeList', () => {
     it('should not re-render children unnecessarily if isScrolling param is not used', () => {
       // Use ReactDOM renderer so the container ref and "onScroll" work correctly.
       const instance = ReactDOM.render(
-        <FixedSizeList {...defaultProps} />,
+        <FixedSizeList {...defaultProps} overscanCount={1} />,
         document.createElement('div')
       );
       simulateScroll(instance, 100);
@@ -286,6 +389,18 @@ describe('FixedSizeList', () => {
       instance.scrollTo(100);
       expect(itemRenderer.mock.calls[0][0].isScrolling).toBe(false);
     });
+
+    it('should ignore values less than zero', () => {
+      const onScroll = jest.fn();
+      const instance = ReactDOM.render(
+        <FixedSizeList {...defaultProps} onScroll={onScroll} />,
+        document.createElement('div')
+      );
+      instance.scrollTo(100);
+      onScroll.mockClear();
+      instance.scrollTo(-1);
+      expect(onScroll.mock.calls[0][0].scrollOffset).toBe(0);
+    });
   });
 
   describe('scrollToItem method', () => {
@@ -294,14 +409,10 @@ describe('FixedSizeList', () => {
       const rendered = ReactTestRenderer.create(
         <FixedSizeList {...defaultProps} itemCount={3} onScroll={onScroll} />
       );
-      onScroll.mockClear();
-      // Offset should not be negative.
+      expect(onItemsRendered).toMatchSnapshot();
+      onItemsRendered.mockClear();
       rendered.getInstance().scrollToItem(0);
-      expect(onScroll).toHaveBeenCalledWith({
-        scrollDirection: 'backward',
-        scrollOffset: 0,
-        scrollUpdateWasRequested: true,
-      });
+      expect(onItemsRendered).not.toHaveBeenCalled();
     });
 
     it('should scroll to the correct item for align = "auto"', () => {
@@ -311,10 +422,54 @@ describe('FixedSizeList', () => {
       // Scroll down enough to show item 10 at the bottom.
       rendered.getInstance().scrollToItem(10, 'auto');
       // No need to scroll again; item 9 is already visible.
-      // Overscan indices will change though, since direction changes.
+      // Because there's no scrolling, it won't call onItemsRendered.
       rendered.getInstance().scrollToItem(9, 'auto');
       // Scroll up enough to show item 2 at the top.
       rendered.getInstance().scrollToItem(2, 'auto');
+      expect(onItemsRendered.mock.calls).toMatchSnapshot();
+    });
+
+    it('scroll with align = "auto" should work with partially-visible items', () => {
+      const rendered = ReactTestRenderer.create(
+        // Create list where items don't fit exactly into container.
+        // The container has space for 3 1/3 items.
+        <FixedSizeList {...defaultProps} itemSize={30} />
+      );
+      // Scroll down enough to show item 10 at the bottom.
+      // Should show 4 items: 3 full and one partial at the beginning
+      rendered.getInstance().scrollToItem(10, 'auto');
+      // No need to scroll again; item 9 is already visible.
+      // Because there's no scrolling, it won't call onItemsRendered.
+      rendered.getInstance().scrollToItem(9, 'auto');
+      // Scroll to near the end. #96 will be shown as partial.
+      rendered.getInstance().scrollToItem(99, 'auto');
+      // Scroll back to show #96 fully. This will cause #99 to be shown as a
+      // partial. Because #96 was already shown previously as a partial, all
+      // props of the onItemsRendered will be the same. This means that even
+      // though a scroll happened in the DOM, onItemsRendered won't be called.
+      rendered.getInstance().scrollToItem(96, 'auto');
+      // Scroll forward again. Because item #99 was already shown partially,
+      // all props of the onItemsRendered will be the same.
+      rendered.getInstance().scrollToItem(99, 'auto');
+      // Scroll to the second item. A partial fifth item should
+      // be shown after it.
+      rendered.getInstance().scrollToItem(1, 'auto');
+      // Scroll to the first item. Now the fourth item should be a partial.
+      rendered.getInstance().scrollToItem(0, 'auto');
+      expect(onItemsRendered.mock.calls).toMatchSnapshot();
+    });
+
+    it('scroll with align = "auto" should work with very small lists and partial items', () => {
+      const rendered = ReactTestRenderer.create(
+        // Create list with only two items, one of which will be shown as a partial.
+        <FixedSizeList {...defaultProps} itemSize={60} itemCount={2} />
+      );
+      // Show the second item fully. The first item should be a partial.
+      rendered.getInstance().scrollToItem(1, 'auto');
+      // Go back to the first item. The second should be a partial again.
+      rendered.getInstance().scrollToItem(0, 'auto');
+      // None of the scrollToItem calls above should actually cause a scroll,
+      // so there will only be one snapshot.
       expect(onItemsRendered.mock.calls).toMatchSnapshot();
     });
 
@@ -370,6 +525,34 @@ describe('FixedSizeList', () => {
       expect(onItemsRendered.mock.calls).toMatchSnapshot();
     });
 
+    it('should scroll to the correct item for align = "smart"', () => {
+      const rendered = ReactTestRenderer.create(
+        <FixedSizeList {...defaultProps} />
+      );
+      // Scroll down enough to show item 10 in the middle.
+      rendered.getInstance().scrollToItem(10, 'smart');
+      // Scrolldn't scroll at all because it's close enough.
+      rendered.getInstance().scrollToItem(9, 'smart');
+      // Should scroll but not center because it's close enough.
+      rendered.getInstance().scrollToItem(6, 'smart');
+      // Item 1 can't align in the middle because it's too close to the beginning.
+      // Scroll up as far as possible though.
+      rendered.getInstance().scrollToItem(1, 'smart');
+      // Item 99 can't align in the middle because it's too close to the end.
+      // Scroll down as far as possible though.
+      rendered.getInstance().scrollToItem(99, 'smart');
+      // This shouldn't scroll at all because it's close enough.
+      rendered.getInstance().scrollToItem(95, 'smart');
+      rendered.getInstance().scrollToItem(99, 'smart');
+      // This should scroll with the 'auto' behavior because it's within a screen.
+      rendered.getInstance().scrollToItem(94, 'smart');
+      rendered.getInstance().scrollToItem(99, 'smart');
+      // This should scroll with the 'center' behavior because it's too far.
+      rendered.getInstance().scrollToItem(90, 'smart');
+      rendered.getInstance().scrollToItem(99, 'smart');
+      expect(onItemsRendered.mock.calls).toMatchSnapshot();
+    });
+
     it('should not report isScrolling', () => {
       // Use ReactDOM renderer so the container ref and "onScroll" work correctly.
       const instance = ReactDOM.render(
@@ -379,6 +562,27 @@ describe('FixedSizeList', () => {
       itemRenderer.mockClear();
       instance.scrollToItem(15);
       expect(itemRenderer.mock.calls[0][0].isScrolling).toBe(false);
+    });
+
+    it('should ignore indexes less than zero', () => {
+      const instance = ReactDOM.render(
+        <FixedSizeList {...defaultProps} />,
+        document.createElement('div')
+      );
+      instance.scrollToItem(20);
+      onItemsRendered.mockClear();
+      instance.scrollToItem(-1);
+      expect(onItemsRendered.mock.calls).toMatchSnapshot();
+    });
+
+    it('should ignore indexes greater than itemCount', () => {
+      const instance = ReactDOM.render(
+        <FixedSizeList {...defaultProps} />,
+        document.createElement('div')
+      );
+      onItemsRendered.mockClear();
+      instance.scrollToItem(defaultProps.itemCount * 2);
+      expect(onItemsRendered.mock.calls).toMatchSnapshot();
     });
   });
 
@@ -417,6 +621,29 @@ describe('FixedSizeList', () => {
       onScroll.mockClear();
       simulateScroll(instance, 200);
       expect(onScroll.mock.calls[0][0].scrollUpdateWasRequested).toBe(false);
+    });
+
+    it('scrolling should report partial items correctly in onItemsRendered', () => {
+      // Use ReactDOM renderer so the container ref works correctly.
+      const instance = ReactDOM.render(
+        <FixedSizeList {...defaultProps} initialScrollOffset={20} />,
+        document.createElement('div')
+      );
+      // Scroll 2 items fwd, but thanks to the initialScrollOffset, we should
+      // still be showing partials on both ends.
+      simulateScroll(instance, 70);
+      // Scroll a little fwd to cause partials to be hidden
+      simulateScroll(instance, 75);
+      // Scroll backwards to show partials again
+      simulateScroll(instance, 70);
+      // Scroll near the end so that the last item is shown
+      // as a partial.
+      simulateScroll(instance, 96 * 25 - 5);
+      // Scroll to the end. No partials.
+      simulateScroll(instance, 96 * 25);
+      // Verify that backwards scrolling near the end works OK.
+      simulateScroll(instance, 96 * 25 - 5);
+      expect(onItemsRendered.mock.calls).toMatchSnapshot();
     });
   });
 
@@ -471,6 +698,22 @@ describe('FixedSizeList', () => {
       expect(keyMapItemRenderer.mock.calls[0][0].index).toBe(0);
       expect(keyMapItemRenderer.mock.calls[1][0].index).toBe(2);
     });
+
+    it('should receive a data value if itemData is provided', () => {
+      const itemKey = jest.fn(index => index);
+      const itemData = {};
+      ReactTestRenderer.create(
+        <FixedSizeList
+          {...defaultProps}
+          itemData={itemData}
+          itemKey={itemKey}
+        />
+      );
+      expect(itemKey).toHaveBeenCalled();
+      expect(
+        itemKey.mock.calls.filter(([index, data]) => data === itemData)
+      ).toHaveLength(itemKey.mock.calls.length);
+    });
   });
 
   describe('refs', () => {
@@ -507,19 +750,103 @@ describe('FixedSizeList', () => {
     });
   });
 
-  describe('custom tag names', () => {
-    it('should use a custom innerTagName if specified', () => {
+  describe('custom element types', () => {
+    it('should use a custom innerElementType if specified', () => {
       const rendered = ReactTestRenderer.create(
-        <FixedSizeList {...defaultProps} innerTagName="section" />
+        <FixedSizeList {...defaultProps} innerElementType="section" />
       );
       expect(rendered.root.findByType('section')).toBeDefined();
     });
 
-    it('should use a custom outerTagName if specified', () => {
+    it('should use a custom outerElementType if specified', () => {
       const rendered = ReactTestRenderer.create(
-        <FixedSizeList {...defaultProps} outerTagName="section" />
+        <FixedSizeList {...defaultProps} outerElementType="section" />
       );
       expect(rendered.root.findByType('section')).toBeDefined();
+    });
+
+    it('should support spreading additional, arbitrary props, e.g. id', () => {
+      const container = document.createElement('div');
+      ReactDOM.render(
+        <FixedSizeList
+          {...defaultProps}
+          innerElementType={forwardRef((props, ref) => (
+            <div ref={ref} id="inner" {...props} />
+          ))}
+          outerElementType={forwardRef((props, ref) => (
+            <div ref={ref} id="outer" {...props} />
+          ))}
+        />,
+        container
+      );
+      expect(container.firstChild.id).toBe('outer');
+      expect(container.firstChild.firstChild.id).toBe('inner');
+    });
+
+    it('should warn if legacy innerTagName or outerTagName props are used', () => {
+      spyOn(console, 'warn');
+
+      const renderer = ReactTestRenderer.create(
+        <FixedSizeList
+          {...defaultProps}
+          innerTagName="div"
+          outerTagName="div"
+        />
+      );
+      expect(console.warn).toHaveBeenCalledTimes(1);
+      expect(console.warn).toHaveBeenLastCalledWith(
+        'The innerTagName and outerTagName props have been deprecated. ' +
+          'Please use the innerElementType and outerElementType props instead.'
+      );
+
+      renderer.update(
+        <FixedSizeList
+          {...defaultProps}
+          innerTagName="div"
+          outerTagName="div"
+        />
+      );
+
+      // But it should only warn once.
+      expect(console.warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should warn if legacy direction "horizontal" value is used', () => {
+      spyOn(console, 'warn');
+
+      const renderer = ReactTestRenderer.create(
+        <FixedSizeList {...defaultProps} direction="horizontal" />
+      );
+      expect(console.warn).toHaveBeenCalledTimes(1);
+      expect(console.warn).toHaveBeenLastCalledWith(
+        'The direction prop should be either "ltr" (default) or "rtl". ' +
+          'Please use the layout prop to specify "vertical" (default) or "horizontal" orientation.'
+      );
+
+      renderer.update(
+        <FixedSizeList {...defaultProps} direction="horizontal" />
+      );
+
+      // But it should only warn once.
+      expect(console.warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should warn if legacy direction "vertical" value is used', () => {
+      spyOn(console, 'warn');
+
+      const renderer = ReactTestRenderer.create(
+        <FixedSizeList {...defaultProps} direction="vertical" />
+      );
+      expect(console.warn).toHaveBeenCalledTimes(1);
+      expect(console.warn).toHaveBeenLastCalledWith(
+        'The direction prop should be either "ltr" (default) or "rtl". ' +
+          'Please use the layout prop to specify "vertical" (default) or "horizontal" orientation.'
+      );
+
+      renderer.update(<FixedSizeList {...defaultProps} direction="vertical" />);
+
+      // But it should only warn once.
+      expect(console.warn).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -588,6 +915,18 @@ describe('FixedSizeList', () => {
       );
     });
 
+    it('should fail if an invalid layout is provided', () => {
+      expect(() =>
+        ReactTestRenderer.create(
+          <FixedSizeList {...defaultProps} layout={null} />
+        )
+      ).toThrow(
+        'An invalid "layout" prop has been specified. ' +
+          'Value should be either "horizontal" or "vertical". ' +
+          '"null" was specified.'
+      );
+    });
+
     it('should fail if an invalid direction is provided', () => {
       expect(() =>
         ReactTestRenderer.create(
@@ -595,7 +934,7 @@ describe('FixedSizeList', () => {
         )
       ).toThrow(
         'An invalid "direction" prop has been specified. ' +
-          'Value should be either "horizontal" or "vertical". ' +
+          'Value should be either "ltr" or "rtl". ' +
           '"null" was specified.'
       );
     });
@@ -603,7 +942,7 @@ describe('FixedSizeList', () => {
     it('should fail if a string height is provided for a vertical list', () => {
       expect(() =>
         ReactTestRenderer.create(
-          <FixedSizeList {...defaultProps} direction="vertical" height="100%" />
+          <FixedSizeList {...defaultProps} layout="vertical" height="100%" />
         )
       ).toThrow(
         'An invalid "height" prop has been specified. ' +
@@ -615,11 +954,7 @@ describe('FixedSizeList', () => {
     it('should fail if a string width is provided for a horizontal list', () => {
       expect(() =>
         ReactTestRenderer.create(
-          <FixedSizeList
-            {...defaultProps}
-            direction="horizontal"
-            width="100%"
-          />
+          <FixedSizeList {...defaultProps} layout="horizontal" width="100%" />
         )
       ).toThrow(
         'An invalid "width" prop has been specified. ' +

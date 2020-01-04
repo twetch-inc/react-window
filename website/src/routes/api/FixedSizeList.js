@@ -58,18 +58,30 @@ const PROPS = [
     type: 'string',
   },
   {
-    defaultValue: '"vertical"',
+    defaultValue: '"ltr"',
     description: (
       <Fragment>
-        <p>Primary scroll direction of the list. Acceptable values are:</p>
+        <p>Determines the direction of text and horizontal scrolling.</p>
         <ul>
-          <li>vertical (default) - Up/down scrolling.</li>
-          <li>horizontal - Left/right scrolling.</li>
+          <li>ltr (default)</li>
+          <li>rtl</li>
         </ul>
         <p>
+<<<<<<< HEAD
           Note that lists may scroll in both directions (depending on CSS) but
           content will only be windowed in the primary direction. However, you
           can use the reverse prop to window the content in reversed direction.
+=======
+          This property also automatically sets the{' '}
+          <a
+            href="https://developer.mozilla.org/en-US/docs/Web/CSS/direction"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            CSS <code>direction</code> style
+          </a>{' '}
+          for the list component.
+>>>>>>> ffc99e578a84bdd84c53e2d643eddf3cc36638f5
         </p>
       </Fragment>
     ),
@@ -158,6 +170,18 @@ const PROPS = [
         the default ("div") should be used.
       </p>
     ),
+    name: 'innerElementType',
+    type: 'React$ElementType',
+  },
+  {
+    description: (
+      <p>
+        <strong className={styles.DeprecatedProp}>
+          This property has been deprecated.
+        </strong>{' '}
+        Please use the <code>innerElementType</code> prop instead.
+      </p>
+    ),
     name: 'innerTagName',
     type: 'string',
   },
@@ -229,9 +253,39 @@ const PROPS = [
     type: 'number',
   },
   {
+    defaultValue: '"vertical"',
     description: (
       <Fragment>
-        <p>Called when the items rendered by the list change.</p>
+        <p>Layout/orientation of the list. Acceptable values are:</p>
+        <ul>
+          <li>vertical (default) - Up/down scrolling.</li>
+          <li>horizontal - Left/right scrolling.</li>
+        </ul>
+        <p>
+          Note that lists may scroll in both directions (depending on CSS) but
+          content will only be windowed in the layout direction specified.
+        </p>
+      </Fragment>
+    ),
+    name: 'layout',
+    type: 'string',
+  },
+  {
+    description: (
+      <Fragment>
+        <p>Called when the range of items rendered by the list changes.</p>
+        <p>
+          This callback will only be called when item indices change. It will
+          not be called if items are re-rendered for other reasons (e.g. a
+          change in <code>isScrolling</code> or <code>data</code> params).
+        </p>
+        <p>
+          The <code>visibleStartIndex</code> and <code>visibleStopIndex</code>
+          parameters are the first and last index currently visible, including
+          items that are partially visible. Note that scrolling a
+          partially-visible item into full visibility might not trigger this
+          callback because the item indices might not change.
+        </p>
         <div className={styles.CodeBlockWrapper}>
           <CodeBlock value={CODE_ON_ITEMS_RENDERED} />
         </div>
@@ -274,11 +328,23 @@ const PROPS = [
         the default ("div") should be used.
       </p>
     ),
+    name: 'outerElementType',
+    type: 'React$ElementType',
+  },
+  {
+    description: (
+      <p>
+        <strong className={styles.DeprecatedProp}>
+          This property has been deprecated.
+        </strong>{' '}
+        Please use the <code>outerElementType</code> prop instead.
+      </p>
+    ),
     name: 'outerTagName',
     type: 'string',
   },
   {
-    defaultValue: 1,
+    defaultValue: 2,
     description: (
       <Fragment>
         <p>
@@ -296,8 +362,11 @@ const PROPS = [
           </li>
         </ul>
         <p>
-          Note that overscanning too much can negatively impact performance. By
-          default, List overscans by one item.
+          Note that overscanning too much can negatively impact performance. To
+          support tabbing and accessibility, List will overscan at least one
+          item, even if this value is set to zero. When items are partially
+          visible at the start and/or end of the viewport, overscanning starts
+          after the partially visible items.
         </p>
       </Fragment>
     ),
@@ -326,8 +395,8 @@ const PROPS = [
         </p>
         <p>
           Note that using this parameter will result in an additional render
-          call after scrolling has stopped (when<code>isScrolling</code> changse
-          from true to false).
+          call after scrolling has stopped (when <code>isScrolling</code>{' '}
+          changes from true to false).
         </p>
         <p>
           <Link to="/examples/list/scrolling-indicators">
@@ -380,7 +449,14 @@ const METHODS = [
         <ul>
           <li>
             auto (default) - Scroll as little as possible to ensure the item is
-            visible. (If the item is already visible, it won't scroll at all.)
+            fully visible. If the item is already fully visible, it won't scroll
+            at all.
+          </li>
+          <li>
+            smart - If the item is already fully visible, don't scroll at all.
+            If it's less than one viewport away, scroll as little as possible so
+            that it becomes visible. If it is more than one viewport away,
+            scroll so that it is centered within the list.
           </li>
           <li>center - Center align the item within the list.</li>
           <li>
